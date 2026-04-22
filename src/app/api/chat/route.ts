@@ -9,25 +9,26 @@ function getGroq(): GroqClient {
   if (!groq) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Groq = require('groq-sdk').default
-    if (!process.env.GROQ_API_KEY) {
+    const apiKey = process.env.GROQ_API_KEY
+    if (!apiKey) {
       throw new Error('GROQ_API_KEY is missing in environment variables')
     }
-    groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    groq = new Groq({ apiKey })
   }
-  return groq // TypeScript knows it's not null because we threw above
+  // TypeScript needs the cast because the variable's type includes | null
+  return groq as GroqClient
 }
 
 // ─── Gemini 3 client ────────────────────────────────────────────────────────
 let genAIClient: GoogleGenAI | null = null
 
 function getGenAI(): GoogleGenAI {
-  if (!genAIClient) {
-    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY
-    if (!key || !key.startsWith('AI')) {
-      throw new Error('Gemini API key missing or invalid – expected AIza...')
-    }
-    genAIClient = new GoogleGenAI({ apiKey: key })
+  if (genAIClient) return genAIClient
+  const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY
+  if (!key || !key.startsWith('AI')) {
+    throw new Error('Gemini API key missing or invalid – expected AIza...')
   }
+  genAIClient = new GoogleGenAI({ apiKey: key })
   return genAIClient
 }
 
