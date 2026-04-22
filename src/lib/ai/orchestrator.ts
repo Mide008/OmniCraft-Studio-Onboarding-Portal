@@ -134,7 +134,7 @@ export async function streamChatResponse(
       messages,
     })
     // Trigger the first request so billing errors surface here, not mid-stream
-    await stream.initialMessagePromise
+    // await stream.initialMessagePromise
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error)
     const isBilling = msg.includes('credit balance') || msg.includes('402') || msg.includes('billing')
