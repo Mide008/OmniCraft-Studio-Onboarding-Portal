@@ -1,22 +1,9 @@
-import type { NextConfig } from 'next'
+import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: [],
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-        pathname: '/storage/v1/object/**',
-      },
-    ],
-  },
-  // ADD THIS SECTION BELOW TO FIX THE 403 / NETWORK ERRORS
-  experimental: {
-    turbo: {
-      allowedDevOrigins: ['192.168.0.103', 'localhost:3000'],
-    },
-  },
-}
+  // For development only – Vercel will ignore this in production
+  allowedDevOrigins: ['192.168.0.103', 'localhost:3000'],
+  // No 'turbo' key anywhere
+};
 
-export default nextConfig
+export default nextConfig;
