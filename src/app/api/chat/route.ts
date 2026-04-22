@@ -1,33 +1,37 @@
 import { NextRequest } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
 
-// ─── Lazy-load Groq SDK (unchanged) ─────────────────────────────────────────
+// ─── Lazy-load Groq SDK ─────────────────────────────────────────────────────
 type GroqClient = InstanceType<typeof import('groq-sdk').default>
 let groq: GroqClient | null = null
 
 function getGroq(): GroqClient {
   if (!groq) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Groq = require('groq-sdk').default
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error('GROQ_API_KEY is missing in environment variables')
+    }
     groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
   }
-  return groq
+  return groq // TypeScript knows it's not null because we threw above
 }
 
-// ─── Gemini 3 client (new SDK) ──────────────────────────────────────────────
+// ─── Gemini 3 client ────────────────────────────────────────────────────────
 let genAIClient: GoogleGenAI | null = null
 
-function getGenAI(): GoogleGenAI | null {
-  if (genAIClient) return genAIClient
-  const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY
-  if (!key || !key.startsWith('AI')) {
-    console.warn('[CHAT] Gemini key missing or invalid')
-    return null
+function getGenAI(): GoogleGenAI {
+  if (!genAIClient) {
+    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY
+    if (!key || !key.startsWith('AI')) {
+      throw new Error('Gemini API key missing or invalid – expected AIza...')
+    }
+    genAIClient = new GoogleGenAI({ apiKey: key })
   }
-  genAIClient = new GoogleGenAI({ apiKey: key })
   return genAIClient
 }
 
-// ─── System prompt (unchanged) ──────────────────────────────────────────────
+// ─── System prompt ──────────────────────────────────────────────────────────
 const SYSTEM = `You are a Senior Design Engineer and Brand Strategist at OmniCraft Studios — a studio with 20 years of expertise in UI/UX, Brand Identity, and Full-Stack Engineering.
 
 Your role: guide prospective clients from a vague idea to a concrete technical and creative roadmap.
@@ -39,7 +43,7 @@ Communication rules:
 - Use markdown: **bold** for emphasis, numbered lists for steps, — dashes for sub-points
 - Ask at most 2 clarifying questions per response`
 
-// ─── Groq streaming helper (unchanged) ──────────────────────────────────────
+// ─── Groq streaming helper ──────────────────────────────────────────────────
 async function streamGroq(
   userMessage: string,
   history: { role: string; content: string }[]
@@ -74,18 +78,14 @@ async function streamGroq(
   })
 }
 
-// ─── Gemini 3 file analysis (new SDK) ───────────────────────────────────────
+// ─── Gemini 3 file analysis ─────────────────────────────────────────────────
 async function analyseWithGemini(
   message: string,
   attachments: { name: string; mimeType: string; base64: string }[],
   history: { role: string; content: string }[]
 ): Promise<string> {
   const client = getGenAI()
-  if (!client) {
-    return `Gemini API key missing. Please add GEMINI_API_KEY to .env.local.`
-  }
-
-  const modelId = 'gemini-3-flash-preview' // matches your Google AI Studio
+  const modelId = 'gemini-3-flash-preview'
 
   // Build a descriptive prompt
   const fileDescriptions = attachments.map((a) => {
@@ -136,7 +136,6 @@ Formatting:
         },
       ],
     })
-    // The new SDK returns response.text directly
     return response.text || 'No analysis generated.'
   } catch (err) {
     console.error('[Gemini 3 Error]', err)
@@ -144,7 +143,7 @@ Formatting:
   }
 }
 
-// ─── Route handler (unchanged) ──────────────────────────────────────────────
+// ─── Route handler ──────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const { message, messages: history = [], attachments = [] } = await req.json()
