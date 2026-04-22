@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,[data-theme="dark"]{
+  --bg:#080808;--surf:#0F0F0F;--mid:#161616;--hi:#1D1D1D;
+  --str:#232323;--strS:#2E2E2E;
+  --fg:#EDEBE4;--fg2:#7C7870;--fg3:#363330;
+  --acc:#C4985C;
+  --in-bg:#0B0B0B;--in-str:#1E1E1E;--in-ring:rgba(168,85,247,.12);
+  --sh:0 4px 20px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04);
+}
+[data-theme="light"]{
+  --bg:#F4F2EC;--surf:#FFFFFF;--mid:#EDEAE2;--hi:#E6E2DA;
+  --str:#DEDAD2;--strS:#C8C3BA;
+  --fg:#1A1816;--fg2:#6B6860;--fg3:#BAB7B0;
+  --acc:#8B6035;
+  --in-bg:#FFFFFF;--in-str:#DEDAD2;--in-ring:rgba(168,85,247,.10);
+  --sh:0 4px 20px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.05);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scrollbar-gutter:stable}
+body{height:100%;background:var(--bg);color:var(--fg);transition:background .22s,color .18s;overflow-x:hidden;overscroll-behavior-y:none}
+input,textarea,select{font-size:16px}
+@media(min-width:640px){input,textarea,select{font-size:14px}}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--strS);border-radius:2px}
+::selection{background:rgba(168,85,247,.2);color:var(--fg)}
+:focus-visible{outline:2px solid rgba(168,85,247,.5);outline-offset:2px;border-radius:5px}
+.text-balance{text-wrap:balance}
+.font-feature{font-feature-settings:"ss01","ss02","cv01","kern"}
+.pb-safe{padding-bottom:max(.75rem,env(safe-area-inset-bottom))}
+.stream-cursor::after{content:'';display:inline-block;width:2px;height:.9em;background:var(--fg);margin-left:2px;vertical-align:text-bottom;border-radius:1px;animation:cursor .9s step-end infinite}
+@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}
+.prose-ai{line-height:1.85}
+.prose-ai p{margin-bottom:.6rem}
+.prose-ai p:last-child{margin-bottom:0}
+.prose-ai strong{color:var(--fg);font-weight:600}
+.prose-ai code{font-family:var(--font-geist-mono),monospace;font-size:.78em;background:var(--mid);border:1px solid var(--str);padding:.1em .4em;border-radius:5px;color:var(--acc)}
