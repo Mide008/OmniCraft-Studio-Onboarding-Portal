@@ -12,11 +12,11 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
+        setAll(cookiesToSet: any[]) {
+  try {
+    cookiesToSet.forEach(({ name, value, options }) =>
+      cookieStore.set(name, value, options)
+    )
           } catch {
             // Called from a Server Component — cookie writes are ignored.
             // This is expected behaviour for read-only server components.
