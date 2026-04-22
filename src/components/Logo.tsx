@@ -11,12 +11,12 @@ import Image from 'next/image'
 const USE_CUSTOM = true
 
 export interface LogoProps {
-  theme:      'dark' | 'light'
+  theme?:     'dark' | 'light'   // now optional
   size?:      'sm' | 'md'
   className?: string
 }
 
-export default function Logo({ theme, size = 'md', className = '' }: LogoProps) {
+export default function Logo({ theme = 'dark', size = 'md', className = '' }: LogoProps) {
   // On a DARK background → use the LIGHT (white) logo
   // On a LIGHT background → use the DARK (black) logo
   const src = theme === 'dark' ? '/logos/logo-light.svg' : '/logos/logo-dark.svg'
