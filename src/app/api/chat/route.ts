@@ -1,66 +1,65 @@
 import { NextRequest } from 'next/server'
-import { GoogleGenAI } from '@google/genai'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { generateSlug } from '@/lib/utils'
 
-// ─── Lazy-load Groq SDK ─────────────────────────────────────────────────────
-type GroqClient = InstanceType<typeof import('groq-sdk').default>
-let groq: GroqClient | null = null
+// ─── AI clients (lazy-loaded) ─────────────────────────────────────────────────
+let _groq: InstanceType<typeof import('groq-sdk').default> | null = null
+let _genAI: InstanceType<typeof import('@google/generative-ai').GoogleGenerativeAI> | null = null
 
-function getGroq(): GroqClient {
-  if (!groq) {
+function getGroq() {
+  if (!_groq) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Groq = require('groq-sdk').default
-    const apiKey = process.env.GROQ_API_KEY
-    if (!apiKey) {
-      throw new Error('GROQ_API_KEY is missing in environment variables')
-    }
-    groq = new Groq({ apiKey })
+    _groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
   }
-  // TypeScript needs the cast because the variable's type includes | null
-  return groq as GroqClient
+  return _groq!
 }
 
-// ─── Gemini 3 client ────────────────────────────────────────────────────────
-let genAIClient: GoogleGenAI | null = null
-
-function getGenAI(): GoogleGenAI {
-  if (genAIClient) return genAIClient
+function getGenAI() {
+  if (_genAI) return _genAI
   const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY
-  if (!key || !key.startsWith('AI')) {
-    throw new Error('Gemini API key missing or invalid – expected AIza...')
-  }
-  genAIClient = new GoogleGenAI({ apiKey: key })
-  return genAIClient
+  if (!key?.startsWith('AI')) return null
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { GoogleGenerativeAI } = require('@google/generative-ai')
+  _genAI = new GoogleGenerativeAI(key)
+  return _genAI!
 }
 
-// ─── System prompt ──────────────────────────────────────────────────────────
+// ─── System prompt ─────────────────────────────────────────────────────────────
 const SYSTEM = `You are a Senior Design Engineer and Brand Strategist at OmniCraft Studios — a studio with 20 years of expertise in UI/UX, Brand Identity, and Full-Stack Engineering.
 
-Your role: guide prospective clients from a vague idea to a concrete technical and creative roadmap.
+Your role: guide prospective clients through a thorough discovery conversation. You listen, probe, and synthesise — like a consultant in an initial meeting, not a chatbot.
 
-Communication rules:
-- Be precise, warm, and direct. Never use filler phrases like "Certainly!" or "Great question!"
-- When listing multiple points, put EACH point on its own line starting with the number
-- Separate distinct ideas with blank lines for readability
-- Use markdown: **bold** for emphasis, numbered lists for steps, — dashes for sub-points
-- Ask at most 2 clarifying questions per response`
+Rules:
+- Be precise, warm, direct. Never use filler like "Certainly!" or "Great question!"
+- Ask at most 2 clarifying questions per response — make each one count
+- Use markdown: **bold** for emphasis, numbered lists each on a new line, — dashes for sub-points
+- Separate distinct paragraphs with blank lines
+- Never rush to solutions — discovery first
+- Your responses should feel like they come from someone who has run 200 studio engagements`
 
-// ─── Groq streaming helper ──────────────────────────────────────────────────
-async function streamGroq(
-  userMessage: string,
-  history: { role: string; content: string }[]
-): Promise<ReadableStream<Uint8Array>> {
-  const client = getGroq()
+// ─── Mode detection ────────────────────────────────────────────────────────────
+function detectMode(text: string): string {
+  const l = text.toLowerCase()
+  if (/api|database|backend|architecture|code|deploy|system|platform|app|tech|stack|infrastructure/i.test(l)) return 'engineering'
+  if (/market|competitor|research|trend|audience|positioning|analysis|industry/i.test(l)) return 'research'
+  return 'creative'
+}
+
+// ─── Groq streaming ────────────────────────────────────────────────────────────
+async function streamGroq(message: string, history: {role:string;content:string}[]): Promise<ReadableStream<Uint8Array>> {
+  const client  = getGroq()
   const encoder = new TextEncoder()
 
   const stream = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model:       'llama-3.3-70b-versatile',
     temperature: 0.65,
-    max_tokens: 1200,
-    stream: true,
+    max_tokens:  1400,
+    stream:      true,
     messages: [
       { role: 'system', content: SYSTEM },
-      ...history.slice(-10).map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      { role: 'user', content: userMessage },
+      ...history.slice(-14).map(m => ({ role: m.role as 'user'|'assistant', content: m.content })),
+      { role: 'user', content: message },
     ],
   })
 
@@ -72,112 +71,196 @@ async function streamGroq(
           if (text) controller.enqueue(encoder.encode(text))
         }
         controller.close()
-      } catch (e) {
-        controller.error(e)
-      }
+      } catch (e) { controller.error(e) }
     },
   })
 }
 
-// ─── Gemini 3 file analysis ─────────────────────────────────────────────────
+// ─── Gemini file + moodboard analysis ─────────────────────────────────────────
 async function analyseWithGemini(
   message: string,
-  attachments: { name: string; mimeType: string; base64: string }[],
-  history: { role: string; content: string }[]
-): Promise<string> {
-  const client = getGenAI()
-  const modelId = 'gemini-3-flash-preview'
+  attachments: {name:string;mimeType:string;base64:string}[],
+  history: {role:string;content:string}[]
+): Promise<{ text: string; moodboard?: MoodboardData }> {
+  const ai = getGenAI()
+  if (!ai) {
+    return {
+      text: [
+        'I can see you\'ve attached a file, but file analysis requires a Gemini API key.',
+        '',
+        'Add `GOOGLE_GENERATIVE_AI_API_KEY=AIza...` to your `.env.local` to enable it.',
+        '',
+        'Could you describe the file content? I\'ll work with what you share.',
+      ].join('\n'),
+    }
+  }
 
-  // Build a descriptive prompt
-  const fileDescriptions = attachments.map((a) => {
-    if (a.mimeType.startsWith('image/')) return 'an image'
-    if (a.mimeType === 'application/pdf') return 'a PDF document'
-    if (a.mimeType.startsWith('audio/')) return 'an audio file'
-    if (a.mimeType.startsWith('video/')) return 'a video file'
-    return 'a file'
-  }).join(', ')
+  const hasImages = attachments.some(a => a.mimeType.startsWith('image/'))
 
   const systemPrompt = `${SYSTEM}
 
-The user has attached ${fileDescriptions}. Analyse it thoroughly and respond with:
-1. A clear summary of what the file contains
-2. Key insights relevant to a design/engineering brief
-3. Specific observations (for images: visual style, palette, composition; for PDFs: requirements, audience, constraints; for audio/video: tone, content, key points)
-4. 1–2 clarifying questions to continue the discovery
+The user has attached ${attachments.map(a => {
+  if (a.mimeType.startsWith('image/')) return 'an image'
+  if (a.mimeType === 'application/pdf') return 'a PDF'
+  if (a.mimeType.startsWith('audio/')) return 'an audio file'
+  return 'a video file'
+}).join(', ')}.
 
-Formatting:
-- Each numbered point on its own line
-- Blank lines between sections
-- Use **bold** for emphasis
-- Be specific and actionable`
+${hasImages ? `IMPORTANT: For any image attachments, also extract a Brand Moodboard as a JSON block at the END of your response, formatted exactly like this (no markdown fences, just the raw JSON on its own line):
+MOODBOARD_JSON:{"colors":["#hex1","#hex2","#hex3"],"mood":"one word","style":"e.g. Minimalist / Editorial / Bold","typography":"e.g. Serif / Geometric Sans","vibe":"one evocative sentence"}` : ''}
 
-  const historyText = history.slice(-6).map((m) => `${m.role}: ${m.content}`).join('\n')
-  const fullPrompt = `${systemPrompt}\n\nRecent History:\n${historyText}\n\nUser message: ${message || 'Please analyse the attached file.'}`
+Analyse the file(s) thoroughly:
+1. Summarise what the file contains or shows
+2. Extract key insights for a design/engineering brief
+3. Identify requirements, constraints, or opportunities
+4. Ask 1-2 specific follow-up questions to continue discovery`
 
-  // Build parts: one text part + inlineData for each file
-  const parts: any[] = [{ text: fullPrompt }]
-  for (const a of attachments) {
-    let cleanBase64 = a.base64
-    if (cleanBase64.includes(',')) cleanBase64 = cleanBase64.split(',')[1]
-    parts.push({
-      inlineData: {
-        data: cleanBase64,
-        mimeType: a.mimeType,
-      },
-    })
+  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parts: any[] = [
+    { text: systemPrompt },
+    ...history.slice(-6).map(m => ({ text: `${m.role}: ${m.content}` })),
+    { text: `User: ${message || 'Please analyse the attached file.'}` },
+    ...attachments.map(a => ({ inlineData: { data: a.base64, mimeType: a.mimeType } })),
+  ]
+
+  const result = await model.generateContent(parts)
+  const full   = result.response.text()
+
+  // Extract moodboard JSON if present
+  let moodboard: MoodboardData | undefined
+  let text = full
+
+  const moodboardMatch = full.match(/MOODBOARD_JSON:(\{[^\n]+\})/)
+  if (moodboardMatch) {
+    try {
+      moodboard = JSON.parse(moodboardMatch[1])
+      text = full.replace(/MOODBOARD_JSON:[^\n]+/, '').trim()
+    } catch { /* ignore parse errors */ }
   }
 
-  try {
-    const response = await client.models.generateContent({
-      model: modelId,
-      contents: [
-        {
-          role: 'user',
-          parts: parts,
-        },
-      ],
-    })
-    return response.text || 'No analysis generated.'
-  } catch (err) {
-    console.error('[Gemini 3 Error]', err)
-    return `Gemini analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again.`
-  }
+  return { text, moodboard }
 }
 
-// ─── Route handler ──────────────────────────────────────────────────────────
+interface MoodboardData {
+  colors:     string[]
+  mood:       string
+  style:      string
+  typography: string
+  vibe:       string
+}
+
+// ─── Route ─────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { message, messages: history = [], attachments = [] } = await req.json()
+    const { message, messages: history = [], attachments = [], sessionSlug } = await req.json()
 
     if (!message?.trim() && attachments.length === 0) {
       return new Response('Message or attachment required', { status: 400 })
     }
 
-    if (attachments.length > 0) {
-      const text = await analyseWithGemini(message ?? '', attachments, history)
-      return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+    const supabase = createAdminClient()
+    const mode     = detectMode(message ?? '')
+
+    // ── Get or create project ──
+    let projectId:   string | null = null
+    let projectSlug: string | null = sessionSlug ?? null
+
+    if (sessionSlug) {
+      const { data } = await supabase.from('projects').select('id').eq('slug', sessionSlug).single()
+      if (data) projectId = data.id
+    }
+
+    if (!projectId) {
+      const slug = generateSlug()
+      const { data: proj } = await supabase
+        .from('projects')
+        .insert({ slug, phase: 'discovery', mode: [mode], status: 'draft' })
+        .select('id, slug').single()
+      if (proj) { projectId = proj.id; projectSlug = proj.slug }
+    }
+
+    // ── Save user message ──
+    if (projectId && message?.trim()) {
+      await supabase.from('messages').insert({
+        project_id: projectId, role: 'user', content: message.trim(), mode,
+        metadata: attachments.length > 0 ? { attachmentCount: attachments.length, attachmentTypes: attachments.map((a:{mimeType:string}) => a.mimeType) } : {},
+      })
+    }
+
+    // ── Track analytics ──
+    if (projectId) {
+      await supabase.from('projects').update({ mode: [mode] }).eq('id', projectId)
+    }
+
+    // ── Generate AI response ──
+    const hasFiles = attachments.length > 0
+
+    if (hasFiles) {
+      const { text, moodboard } = await analyseWithGemini(message ?? '', attachments, history)
+
+      // Save AI response to DB
+      if (projectId) {
+        await supabase.from('messages').insert({
+          project_id: projectId, role: 'assistant', content: text, mode,
+          metadata: moodboard ? { moodboard } : {},
+        })
+      }
+
+      // Return with moodboard header if extracted
+      const headers: Record<string,string> = {
+        'Content-Type':   'text/plain; charset=utf-8',
+        'X-Project-Id':   projectId ?? '',
+        'X-Project-Slug': projectSlug ?? '',
+        'X-Mode':         mode,
+      }
+      if (moodboard) headers['X-Moodboard'] = JSON.stringify(moodboard)
+
+      return new Response(text, { status: 200, headers })
     }
 
     // Text-only → Groq streaming
     const stream = await streamGroq(message, history)
-    return new Response(stream, {
+
+    // Collect full response to save after streaming (via a tee)
+    const [streamForClient, streamForSave] = stream.tee()
+
+    // Background: collect full text and save
+    if (projectId) {
+      ;(async () => {
+        const reader  = streamForSave.getReader()
+        const dec     = new TextDecoder()
+        let   fullText = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          fullText += dec.decode(value, { stream: true })
+        }
+        await supabase.from('messages').insert({
+          project_id: projectId, role: 'assistant', content: fullText, mode,
+        })
+      })().catch(console.error)
+    }
+
+    return new Response(streamForClient, {
       status: 200,
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type':      'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
-        'Cache-Control': 'no-cache, no-store',
+        'Cache-Control':     'no-cache, no-store',
+        'X-Project-Id':      projectId ?? '',
+        'X-Project-Slug':    projectSlug ?? '',
+        'X-Mode':            mode,
       },
     })
   } catch (err) {
     console.error('[CHAT ROUTE]', err)
-    const msg = err instanceof Error ? err.message : String(err)
-    const isQuota = /quota|rate.?limit|429/i.test(msg)
-    const isBilling = /credit|billing|402|balance/i.test(msg)
-    const friendly = isBilling
+    const msg  = err instanceof Error ? err.message : String(err)
+    const user = /credit|billing|balance/i.test(msg)
       ? 'The AI engine needs a billing top-up. Visit console.groq.com → Billing.'
-      : isQuota
+      : /quota|rate/i.test(msg)
       ? 'Request limit reached. Please wait a moment and try again.'
-      : 'Something went wrong connecting to the AI. Please try again.'
-    return new Response(friendly, { status: 200 })
+      : 'Connection issue. Please try again.'
+    return new Response(user, { status: 200 })
   }
 }
