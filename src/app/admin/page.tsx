@@ -320,9 +320,9 @@ function ProjectDetail({ project, adminKey, onUpdated }: { project: AdminProject
                   {m.metadata?.attachmentCount && (
                     <span className="text-2xs text-amber-400 font-mono">📎 {String(m.metadata.attachmentCount)} file(s)</span>
                   )}
-                  {m.metadata?.type === 'human_review_request' && (
-                    <span className="text-2xs text-red-400 font-mono">🚨 Review Requested</span>
-                  )}
+                  {!!(m.metadata as any)?.attachmentCount && (
+  <span className="text-2xs text-amber-400 font-mono">📎 {String((m.metadata as any).attachmentCount)}</span>
+)}
                 </div>
                 <p className={cn('text-sm leading-[1.8] whitespace-pre-wrap', m.role==='user'?'text-[var(--fg2)]':'text-[var(--fg)]')}>{m.content}</p>
               </div>
