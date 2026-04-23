@@ -48,11 +48,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Track conversion (gate_submitted event)
-    await supabase.from('analytics_events').insert({
-      project_id:  projectId !== 'pending' ? projectId : null,
-      event_type:  'gate_submitted',
-      metadata:    { name, email, hasCompany: !!company },
-    }).catch(() => {}) // non-fatal
+    try {
+      await supabase.from('analytics_events').insert({
+        project_id:  projectId !== 'pending' ? projectId : null,
+        event_type:  'gate_submitted',
+        metadata:    { name, email, hasCompany: !!company },
+      })
+    } catch {
+      // non-fatal – ignore analytics errors
+    }
 
     const adminEmail = process.env.ADMIN_EMAIL ?? process.env.GMAIL_USER
 
