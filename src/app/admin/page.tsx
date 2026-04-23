@@ -317,11 +317,15 @@ function ProjectDetail({ project, adminKey, onUpdated }: { project: AdminProject
               <div key={m.id}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-2xs font-mono text-[var(--fg3)] uppercase tracking-widest">{m.role}</span>
-                  {m.metadata?.attachmentCount && (
-                    <span className="text-2xs text-amber-400 font-mono">📎 {String(m.metadata.attachmentCount)} file(s)</span>
-                  )}
-                  {!!(m.metadata as any)?.attachmentCount && (
-  <span className="text-2xs text-amber-400 font-mono">📎 {String((m.metadata as any).attachmentCount)}</span>
+                 {!!(m.metadata as any)?.attachmentCount && (
+  <span className="text-2xs text-amber-400 font-mono">
+    📎 {String((m.metadata as any).attachmentCount)}
+  </span>
+)}
+{(m.metadata as any)?.type === 'human_review_request' && (
+  <span className="text-2xs text-blue-400 font-mono italic">
+    (Review Requested)
+  </span>
 )}
                 </div>
                 <p className={cn('text-sm leading-[1.8] whitespace-pre-wrap', m.role==='user'?'text-[var(--fg2)]':'text-[var(--fg)]')}>{m.content}</p>
