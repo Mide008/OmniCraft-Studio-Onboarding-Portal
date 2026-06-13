@@ -1,9 +1,12 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
+import path from 'path'
 
 const nextConfig: NextConfig = {
-  // For development only – Vercel will ignore this in production
-  allowedDevOrigins: ['192.168.0.103', 'localhost:3000'],
-  // No 'turbo' key anywhere
-};
-
-export default nextConfig;
+  allowedDevOrigins: ['192.168.0.105', 'localhost:3000'], // optional, prevents cross-origin warnings
+  experimental: { serverActions: { bodySizeLimit: '10mb' } }, // or '50mb'
+  turbopack: { root: path.resolve(__dirname) },
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: '*.supabase.co', pathname: '/storage/v1/object/**' }],
+  },
+}
+export default nextConfig

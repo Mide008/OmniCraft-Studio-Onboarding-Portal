@@ -1,40 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { SaveMessageRequest } from '@/types'
 
-export async function POST(request: NextRequest) {
-  try {
-    const body: SaveMessageRequest = await request.json()
-    const { projectId, role, content, mode } = body
-
-    if (!projectId || !role || !content) {
-      return NextResponse.json(
-        { error: 'projectId, role, and content are required' },
-        { status: 400 }
-      )
-    }
-
-    const supabase = createAdminClient()
-
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        project_id: projectId,
-        role,
-        content,
-        mode: mode ?? null,
-      })
-      .select('id')
-      .single()
-
-    if (error) {
-      console.error('[SAVE MESSAGE ERROR]', error)
-      return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
-    }
-
-    return NextResponse.json({ id: data.id })
-  } catch (error) {
-    console.error('[SAVE MESSAGE ERROR]', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
+export async function POST(req:NextRequest){
+  try{
+    const{projectId,role,content,mode='creative',metadata={}}=await req.json()
+    if(!projectId||!role||!content)return NextResponse.json({error:'Missing fields'},{status:400})
+    const supabase=createAdminClient()
+    const{data,error}=await supabase.from('messages').insert({project_id:projectId,role,content,mode,metadata}).select('id').single()
+    if(error)return NextResponse.json({error:error.message},{status:500})
+    return NextResponse.json({id:data.id})
+  }catch(e:any){return NextResponse.json({error:e.message},{status:500})}
 }

@@ -2,10 +2,13 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { UploadedFile, AssetType } from '@/types'
+import type { UploadedFile } from '@/types'
 import { detectAssetType, formatFileSize, MAX_FILE_SIZE_BYTES, ALL_ACCEPTED_TYPES, cn } from '@/lib/utils'
 
-const ASSET_ICON: Record<AssetType, string> = { image: '🖼', pdf: '📄', audio: '🎙', video: '🎬' }
+// Local definition of AssetType (matches the return type of detectAssetType)
+type AssetType = 'image' | 'pdf' | 'audio' | 'video' | 'file'
+
+const ASSET_ICON: Record<AssetType, string> = { image: '🖼', pdf: '📄', audio: '🎙', video: '🎬', file: '📎' }
 
 type BaseProps = { onFilesAdd: (f: UploadedFile[]) => void; disabled?: boolean }
 
